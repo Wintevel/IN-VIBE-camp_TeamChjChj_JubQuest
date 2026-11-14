@@ -54,7 +54,8 @@ function Tabs() {
   )
 }
 
-const stackScreen = { headerShown: false, contentStyle: { backgroundColor: colors.ink } }
+// 화면을 넘길 때 오른쪽에서 짧게 밀려 들어옵니다(폰). 웹은 components/Screen.js 의 등장 움직임이 대신합니다.
+const stackScreen = { headerShown: false, contentStyle: { backgroundColor: colors.ink }, animation: 'slide_from_right', animationDuration: 220 }
 
 export default function RootNavigator() {
   const { session, tutorialSeen } = useApp()

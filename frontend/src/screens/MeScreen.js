@@ -3,7 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import AvatarFrame from "../components/AvatarFrame";
 import DailyLimits from "../components/DailyLimits";
-import { BadgeIcon, GearIcon, PointIcon, XpIcon } from "../components/Icons";
+import {
+  BackpackIcon,
+  BadgeIcon,
+  GearIcon,
+  HelpIcon,
+  PointIcon,
+  XpIcon,
+} from "../components/Icons";
 import { Appear, Bar, CountUp, PressScale } from "../components/Motion";
 import { Card, List, SectionTitle } from "../components/ListRows";
 import ReportCard from "../components/ReportCard";
@@ -220,6 +227,7 @@ export default function MeScreen({ navigation }) {
         rows={[
           {
             label: "보관함",
+            icon: <BackpackIcon />,
             value: vault > 0 ? `쿠폰·제휴 보상 ${vault}개` : "쿠폰·제휴 보상",
             onPress: () => navigation.navigate("Vault"),
           },
@@ -277,6 +285,7 @@ export default function MeScreen({ navigation }) {
             : []),
           {
             label: "도움말",
+            icon: <HelpIcon />,
             value: "쓰는 법과 규칙",
             onPress: () => navigation.navigate("Help"),
           },

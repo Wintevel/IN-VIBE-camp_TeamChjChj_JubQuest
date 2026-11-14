@@ -68,7 +68,7 @@ export default function CollectionScreen({ navigation }) {
                 </View>
                 {a.gift ? (
                   <View style={[styles.reward, { backgroundColor: 'rgba(169,124,255,0.18)' }]}>
-                    <Text style={[text.chip, { color: colors.purple }]}>꾸미기 · {a.gift}</Text>
+                    <Text style={[text.chip, { color: colors.purple }]}>{a.gift}</Text>
                   </View>
                 ) : null}
               </View>

@@ -166,3 +166,6 @@
   완료 조건: `claim_feat(p_id)` RPC(달성 여부는 서버가 판정, 오류 `FEAT_NOT_FOUND`·`FEAT_CLAIMED`·`FEAT_NOT_DONE`, 반환 `points_gained, xp_gained, cosmetic, leveled_up, level`), `my_profile` 에 `feats_claimed`(받은 도전과제 id 배열).
 - [ ] **5-4. 칭호 기본값 없음 (확정)**
   새 계정은 칭호가 없습니다(`title_key = null`). 레벨 1 칭호는 없애고 레벨 칭호는 레벨 2부터, 나머지는 도전과제 달성으로 열립니다. `set_title(null)` 로 "착용 안 함"이 되어야 합니다.
+- [ ] **5-5. 교환 상점 가격 10배 (확정)**
+  `shop_items.cost` 를 지금의 10배로 올려 주세요(프론트 예시 기준 500 / 1,000 / 3,000 / 5,000). 꾸미기 가격은 그대로입니다.
+- 참고: 하트의 "4초 되돌리기"를 없앴습니다. 앱은 누르는 즉시 `give_heart` 를 보냅니다. 서버 변경은 필요 없습니다.

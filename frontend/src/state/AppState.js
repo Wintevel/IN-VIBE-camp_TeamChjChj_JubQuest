@@ -11,7 +11,6 @@ const FALLBACK = { lat: 37.452, lng: 126.656 }
 const SESSION_WAIT_MS = 5000
 const TUTORIAL_KEY = 'jipgepyo:tutorial-seen'
 const CONSENT_KEY = 'jipgepyo:consent' // 로그인 화면이 기기에 남기는 동의 기록
-const HEART_UNDO_MS = 4000 // 하트를 누른 뒤 되돌릴 수 있는 시간
 
 export function AppStateProvider({ children }) {
   const [session, setSession] = useState(undefined) // undefined: 확인 중, null: 로그아웃
@@ -35,7 +34,6 @@ export function AppStateProvider({ children }) {
   const [toast, setToast] = useState(null)
   const coordsRef = useRef(null)
 
-  const pendingHeart = useRef(null) // 되돌리기 시간 안에 있는 하트 { id, timer, commit }
 
   // action: { label, onPress } 를 주면 안내 안에 버튼이 붙습니다.
   const showToast = useCallback((message, { action = null, ms = 2600 } = {}) => {
@@ -226,43 +224,25 @@ export function AppStateProvider({ children }) {
         // 서버는 사진이 올라온 시각으로 "찍고 바로 완료"를 판정하므로 찍자마자 올립니다.
         if (api.uploadProofPhoto) run(() => api.uploadProofPhoto(userId, id, slot, shot))
       },
-      // 하트는 취소할 수 없습니다. 누른 뒤 몇 초 동안만 되돌릴 수 있고, 그 시간이 지나야 서버에 보내 확정합니다.
-      // 되돌린 하트는 서버에 가지 않으므로 포인트·하트 수·하루 횟수에 아무 영향이 없습니다.
+      // 하트는 누르면 바로 확정되고 취소할 수 없습니다.
       toggleHeart: (id) => {
         const r = reports.find((x) => x.id === id)
         if (!r) return
         if (r.liked_by_me) return showToast(api.errorText({ message: 'HEART_FINAL' }))
         if (profile && profile.hearts_today >= profile.hearts_limit) return showToast(api.errorText({ message: 'HEART_DAILY_LIMIT' }))
-        pendingHeart.current?.commit() // 앞서 누른 하트가 대기 중이면 먼저 확정
         const before = { liked_by_me: false, like_count: r.like_count ?? 0 }
-        patch(id, { liked_by_me: true, like_count: before.like_count + 1 })
-        const commit = () => {
-          const p = pendingHeart.current
-          if (!p || p.id !== id) return
-          clearTimeout(p.timer)
-          pendingHeart.current = null
-          run(async () => {
-            try {
-              const d = await api.toggleLike(id)
-              patch(id, { liked_by_me: d.liked, like_count: d.like_count, is_promoted: d.is_promoted })
-              if (d.points_gained) showToast(`하트를 눌러 +${d.points_gained}P 받았어요`)
-              refresh() // 하트에 따라 보상이 달라지므로 목록을 새로 받습니다
-            } catch (e) {
-              patch(id, before)
-              throw e
-            }
-          })
-        }
-        const undo = () => {
-          const p = pendingHeart.current
-          if (!p || p.id !== id) return
-          clearTimeout(p.timer)
-          pendingHeart.current = null
-          patch(id, before)
-          showToast('하트를 되돌렸어요')
-        }
-        pendingHeart.current = { id, commit, timer: setTimeout(commit, HEART_UNDO_MS) }
-        showToast('하트를 눌렀어요. 곧 확정돼요', { action: { label: '되돌리기', onPress: undo }, ms: HEART_UNDO_MS })
+        patch(id, { liked_by_me: true, like_count: before.like_count + 1 }) // 먼저 화면에 반영하고, 실패하면 되돌립니다
+        return run(async () => {
+          try {
+            const d = await api.toggleLike(id)
+            patch(id, { liked_by_me: d.liked, like_count: d.like_count, is_promoted: d.is_promoted })
+            showToast(d.points_gained ? `하트를 눌러 +${d.points_gained}P 받았어요` : '하트를 눌렀어요')
+            refresh() // 하트에 따라 보상이 달라지므로 목록을 새로 받습니다
+          } catch (e) {
+            patch(id, before)
+            throw e
+          }
+        })
       },
       accept: (id) =>
         run(async () => {

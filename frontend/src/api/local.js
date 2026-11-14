@@ -35,10 +35,10 @@ const pointsOf = (r) => Math.floor(r.likes.length / HEARTS_PER_STEP) * POINTS_PE
 
 // 포인트 교환 상점(예시 상품). 실제 쿠폰 발급은 연결되어 있지 않습니다.
 const SHOP = [
-  { id: 1, name: '종량제 봉투 10L 5장', cost: 50 },
-  { id: 2, name: '편의점 1,000원 쿠폰', cost: 100 },
-  { id: 3, name: '카페 아메리카노', cost: 300 },
-  { id: 4, name: '충주사랑상품권 5,000원', cost: 500 },
+  { id: 1, name: '종량제 봉투 10L 5장', cost: 500 },
+  { id: 2, name: '편의점 1,000원 쿠폰', cost: 1000 },
+  { id: 3, name: '카페 아메리카노', cost: 3000 },
+  { id: 4, name: '충주사랑상품권 5,000원', cost: 5000 },
 ]
 
 // 프로필 꾸미기(예시 품목·가격). 포인트로 사는 것과 레벨로만 열리는 것을 나눕니다.
@@ -294,7 +294,6 @@ export async function toggleLike(id) {
   const on = r.likes.includes(me.id)
   let gained = 0
   // 한 번 누른 하트는 취소할 수 없습니다(눌렀다 떼기로 포인트·승격을 조작하지 못하게).
-  // 실수 대비 되돌리기는 화면이 이 함수를 부르기 전 몇 초 동안만 받습니다.
   if (on) fail('HEART_FINAL')
   {
     // 하루 10개까지.
