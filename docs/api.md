@@ -40,15 +40,16 @@
 - 한 사람이 한 제보에 1번, **취소 없음**(클라이언트 delete 권한 없음). 앱도 되돌리기 없이 누르는 즉시 보냅니다(2026-11-14 변경)
 - **하루 10개**(KST 0시 기준). 11번째는 `HEART_DAILY_LIMIT`
 - 하트를 누른 사람은 **1점**(임시). 같은 제보에는 한 번만
-- 하트 5개가 되면 자동 승격 → 같은 위치에 `kind='report'` 의뢰가 생기고 그때부터 수락 가능
-- **제보자는 포인트를 받지 않습니다.** 승격된 제보를 치운 사람(해결자)만 하트 수 × 5점(최대 100점)을 받습니다
+- (5-2) 승격 문턱은 없습니다. 제보는 올리는 즉시 같은 위치에 `kind='report'` 의뢰가 되고, 3분 뒤 공개되면 수락할 수 있습니다. 그래서 `reports_nearby` 는 거의 비어 있고 주민 제보는 `quests_nearby` 에 나옵니다
+- **제보자는 포인트를 받지 않습니다.** 제보를 치운 사람(해결자)만 **하트 3개마다 5점**(`floor(하트 수 / 3) × 5`, 최대 100점)을 받습니다. 하트 0~2개면 포인트 0, XP 만
 - 본인 제보에는 하트 불가(`CANNOT_LIKE_OWN_REPORT`), 본인 제보는 본인이 해결 불가(`OWN_REPORT`). 단, 필요 인원 2명 이상인 의뢰는 올린 사람도 참여
 
 **포인트와 XP**
 - **포인트**: 상점·꾸미기에 쓰면 줄어드는 값(`points`). 받는 곳: 의뢰 해결, 하트 누르기
 - **XP**: 쌓이기만 하는 값(`xp`). 의뢰를 해결하면 장소 유형별로 빗물받이 100 · 버스정류장 80 · 공원 150 · 골목·거리 80 · 기타 50 (임시)
 - **개인 레벨** = XP 300마다 1레벨(임시). 칭호는 프론트가 레벨 숫자로 붙입니다
-- 의뢰 보상 포인트: 주민 제보 = 하트 수 × 5(최대 100), 제휴 = `reward_points`, 크루 의뢰 = 50(임시)
+- 크루 만들기는 레벨 3부터(5-1, `CREW_LEVEL_TOO_LOW`). 가입은 제한 없음
+- 의뢰 보상 포인트: 주민 제보 = floor(하트 수 / 3) × 5(최대 100), 제휴 = `reward_points`, 크루 의뢰 = 50(임시)
 
 **크루**
 - 1인 1크루(확정 대기 ?). 바로 가입(초대·승인 없음)
@@ -62,7 +63,7 @@
 - 주민 제보·크루 의뢰는 **필요 인원이 다 모여야 인증 가능**(`REPORT_NOT_IN_PROGRESS`), 인원이 찼으면 추가 수락 거절(`REPORT_FULL`). 필요 인원만큼 완료되면 마감
 - 제휴 의뢰는 마감일까지 여러 명이 각자 한 번씩 가능(인원 제한 없음)
 - 인증 방식 `proof_mode`: `before_after`(치우기 전·후 두 장) / `single`(사진 한 장, 예: "망가진 벤치 사진 찍기"). `single` 은 `p_before_*` 만 보냅니다
-- 검증만 통과하면 자동 승인(별도 승인자 없음)
+- 검사를 통과하면 바로 승인하지 않고 **확인 대기(`submitted`)**. 포인트·XP 는 확인이 끝나야 지급됩니다(아래 "인증 확인")
 
 ## 악용 방지 규칙 (서버 `approve_claim` 에서 판정)
 1. **하루 3개 상한**: 승인 기준, KST 0시. 같은 사용자의 인증 요청은 한 번에 하나씩 처리해서 동시에 보내도 3개를 넘지 않음 → `DAILY_LIMIT`
@@ -195,12 +196,34 @@ const { data, error } = await supabase.rpc('approve_claim', {
   p_before_thumb, p_after_thumb,  // 선택: 32×32 RGB 픽셀(3072바이트)을 base64 로. 있으면 NO_CHANGE 검사
 })
 // single(사진 한 장) 의뢰는 p_before_* 와 p_mocked 만 보내면 됩니다.
-// 성공: { title, points_awarded, points_gained, xp_gained, crew_xp_gained, reward_label,
-//         points, xp, level, leveled_up, streak_weeks, daily_remaining }
+// 성공(제출됨): { status: 'submitted'|'staff_review', title, points_pending, xp_pending, crew_xp_pending,
+//                reward_label, voters, verify_deadline, daily_remaining }   ← 포인트는 아직 지급 전
 // 실패: DAILY_LIMIT, REPORT_NOT_IN_PROGRESS, TOO_FAR, PHOTOS_TOO_FAR_APART, INVALID_TIME, TOO_FAST, NO_CHANGE,
 //       MOCK_LOCATION, INVALID_PHOTO, DUPLICATE_PHOTO, MISSING_PROOF, CLAIM_EXPIRED, QUEST_CLOSED, CLAIM_NOT_ACTIVE
 ```
-해시는 촬영 파일 내용의 SHA-256 입니다. 실패해도 claim 은 `accepted` 로 남아서 다시 찍어 올릴 수 있습니다(만료 제외).
+해시는 촬영 파일 내용의 SHA-256 입니다. 검사에서 실패해도 claim 은 `accepted` 로 남아서 다시 찍어 올릴 수 있습니다(만료 제외).
+
+### 인증 확인 (2026-11-15 장연우 결정)
+인증 상태: `accepted`(수락) → `submitted`(확인 대기) → `approved`(승인, 이때 포인트·XP·크루 XP 지급) 또는 `rejected`(반려, 의뢰는 다시 열림). 결론이 안 나면 `staff_review`(운영진 검토).
+
+**주민 제보·크루 의뢰: 이웃 투표**
+- 의뢰를 올린 사람 **50%** + 하트 누른 사람(크루 의뢰는 다른 크루원) **50% 를 똑같이 나눔**. 해결한 본인은 투표에서 빠집니다.
+- "치워졌어요" 합계가 **60% 이상**이면 승인. 올린 사람이 "아직이에요"면 바로 반려. 남은 표를 다 받아도 60% 가 안 되면 반려.
+- 올린 사람이 없거나 본인이 해결자면 나머지가 100% 를 나눕니다. 하트가 하나도 없으면 올린 사람 혼자 100%. 투표할 사람이 아무도 없으면 운영진 검토.
+- 투표 대상은 인증을 제출한 순간 정해집니다. 48시간 안에 결론이 안 나면 운영진 검토.
+- 투표는 아래 "해결 확인 알림"(`my_notices`, `answer_notice`) 그대로입니다.
+
+**제휴 의뢰: 업체 담당자 확인** (업체가 현장에 1명 이상 파견)
+```js
+supabase.rpc('partner_claims')  // 업체 웹: [{ id, quest_id, title, user, before, after, single, lat, lng, submitted_at, deadline, status, reject_reason, decided_at }]
+await supabase.rpc('partner_review_claim', { p_claim_id, p_approve: true, p_reason: null })  // 'approved'|'rejected'
+```
+업체 계정이 없는 의뢰(시드 등)는 바로 운영진 검토, 48시간 안에 판단이 없으면 운영진 검토입니다.
+
+**하루 3개 상한**은 인증을 제출한 시점에 셉니다(확인 대기 포함). `my_claims` 는 수락 중·확인 대기·운영진 검토·최근 3일 반려를 내려 줍니다:
+`{ claim_id, quest_id, title, kind, status, accepted_at, deadline_at, submitted_at, verify_deadline, ok_percent, voters, answered, reject_reason, points_pending, xp_pending, lat, lng, address }`.
+
+운영진 결정: 대시보드 SQL 에디터에서 `select public.staff_review_claim(12, true);` / `select public.staff_review_claim(12, false, '사유');`. 목록은 `staff_attention` 의 `claim_review`.
 
 ### 로그인·가입 동의 (2-12, 2-13)
 - 로그인 수단은 카카오·구글·이메일(Supabase Auth). 제공자 설정(클라이언트 ID 등)은 백엔드 담당이 대시보드에서 합니다.
@@ -221,15 +244,16 @@ const { data } = await supabase.rpc('set_mark', { p_report_id, p_mark: 'still' }
 `reports_nearby` 행과 `quests_nearby` 의 주민 제보 행에 `marks`, `my_mark` 가 같이 내려갑니다(승격된 의뢰는 원래 제보 기준). 포인트는 없습니다. `gone` 이 3개(임시) 모이면 운영진 목록(`staff_attention`)에 올라가고 디스코드 알림이 갑니다. 자동 종료는 하지 않습니다(결정 대기).
 
 ### 해결 확인 알림 (2-15)
-주민 제보 의뢰가 인증 완료되면 제보한 사람과 하트를 누른 사람(해결한 본인 제외)에게 알림이 하나씩 생깁니다.
+주민 제보·크루 의뢰의 인증이 **제출되면** 투표할 사람(올린 사람, 하트 누른 사람 또는 크루원, 해결한 본인 제외)에게 알림이 하나씩 생깁니다. 답이 곧 투표입니다.
 ```js
 supabase.rpc('my_notices')
-// [{ id, report_id, quest_id, title, solver, before_path, after_path, single, at, answer: null|'ok'|'not', answered_at }]
+// [{ id, claim_id, report_id, quest_id, title, solver, before_path, after_path, single,
+//    role: 'author'|'heart'|'crew', weight(%), claim_status, at, answer: null|'ok'|'not', answered_at }]
 // 사진 경로는 claim-photos 버킷 공개 경로
 await supabase.rpc('answer_notice', { p_notice_id, p_answer: 'ok' })  // 'ok'(치워졌어요) | 'not'(아직이에요). 한 번만
-// { id, answer, not_count }   에러: NOTICE_NOT_FOUND(없거나 이미 답함)
+// { id, answer, claim_status }   에러: NOTICE_NOT_FOUND(없거나 이미 답함)
 ```
-`not` 이 2건(임시) 모이면 의뢰에 이의 표시(`quests.disputed_at`)를 남기고 운영진에게 알립니다. 포인트 회수는 결정 대기입니다. 푸시 알림은 없습니다(앱 안 목록만).
+집계 규칙은 위 "인증 확인". 이미 결론 난 인증에 늦게 답해도 결과는 바뀌지 않습니다. 푸시 알림은 없습니다(앱 안 목록만).
 
 ### 제보 신고·프로필 사진 신고 (2-16, 2-18)
 ```js
@@ -259,9 +283,16 @@ await supabase.auth.signOut()
 // 2-18 프로필 사진: avatars 버킷 본인 폴더에 올린 뒤 경로를 저장 (다른 경로면 INVALID_PHOTO)
 await supabase.storage.from('avatars').upload(`${user.id}/avatar.jpg`, file, { upsert: true })
 await supabase.from('profiles').update({ avatar_url: `${user.id}/avatar.jpg` }).eq('id', me)  // null 이면 기본
-// 2-18 칭호 고르기: 'lv:3'(레벨 3 이상) 또는 'ach:first'(도전과제 달성). null 이면 지금 레벨 칭호
+// 2-18 칭호 고르기: 'lv:3'(레벨 3 이상, 레벨 칭호는 2부터) 또는 'ach:first'(도전과제 달성). null 이면 칭호 없음(5-4)
 await supabase.rpc('set_title', { p_key: 'ach:first' })   // 에러: TITLE_LOCKED, INVALID_INPUT
 ```
+```js
+// 5-3 도전과제 보상 받기 (달성 여부는 서버가 판정)
+await supabase.rpc('claim_feat', { p_id: 'ten' })
+// { points_gained, xp_gained, cosmetic(받은 꾸미기 이름 또는 null), leveled_up, level }
+// 에러: FEAT_NOT_FOUND, FEAT_CLAIMED, FEAT_NOT_DONE.  my_profile.feats_claimed = 받은 도전과제 id 배열
+```
+도전과제 보상 품목(`frame-ember`, `frame-month`, `name-rose`)은 상점에서 살 수 없고(`LEVEL_TOO_LOW`), `cosmetics_list` 에 `feat` 로 표시됩니다.
 `stats.places` 의 키는 웹·앱 장소 키(`drain`/`bus_stop`/`park`/`street`/`etc`), `stats.issues` 는 문제 유형 키입니다. 도전과제 조건은 서버 `achievements` 테이블에도 같은 숫자로 있습니다(`frontend/src/lib/achievements.js` 를 바꾸면 같이 바꿔야 함).
 
 ### 상점
