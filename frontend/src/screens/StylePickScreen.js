@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { Animated, StyleSheet, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import AvatarFrame from '../components/AvatarFrame'
 import Button from '../components/Button'
-import { PointIcon } from '../components/Icons'
+import { LockIcon, PointIcon } from '../components/Icons'
+import { Appear, ND, PressScale, reduced } from '../components/Motion'
 import { Card, SectionTitle } from '../components/ListRows'
 import Screen from '../components/Screen'
 import ScreenHeader from '../components/ScreenHeader'
@@ -77,10 +78,19 @@ export default function StylePickScreen({ navigation, route }) {
     if (ok) navigation.goBack()
   }
 
-  const Cell = (c) => {
+  // 칸을 바꿀 때마다 미리보기가 살짝 커졌다 돌아옵니다.
+  const pop = useRef(new Animated.Value(1)).current
+  useEffect(() => {
+    if (reduced() || picked == null) return
+    pop.setValue(0.86)
+    Animated.spring(pop, { toValue: 1, speed: 18, bounciness: 14, useNativeDriver: ND }).start()
+  }, [picked, photo, pop])
+
+  const Cell = (c, i) => {
     const active = c.key === sel.key
     return (
-      <Pressable key={c.key} onPress={() => pick(c)} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`${c.label}${c.open ? '' : ', 잠김'}${c.on ? ', 적용 중' : ''}`} style={[styles.cell, kind === 'title' && styles.cellWide, active && styles.cellOn, !c.open && { opacity: 0.6 }]}>
+      <Appear key={c.key} index={i} from="bottom" style={kind === 'title' ? styles.slotWide : styles.slot}>
+      <PressScale onPress={() => pick(c)} accessibilityRole="button" accessibilityState={{ selected: active }} accessibilityLabel={`${c.label}${c.open ? '' : ', 잠김'}${c.on ? ', 적용 중' : ''}`} style={[styles.cell, kind === 'title' && styles.cellWide, active && styles.cellOn, !c.open && kind !== 'title' && { opacity: 0.6 }]}>
         {kind === 'frame' ? (
           <AvatarFrame frame={c.item} size={48} letter="" />
         ) : kind === 'name' ? (
@@ -92,12 +102,21 @@ export default function StylePickScreen({ navigation, route }) {
             <AvatarFrame frame={{ style: 'plain', colors: [colors.line] }} size={48} letter={letter} letterColor={colors.sub} uri={c.key === 'pick' ? photo : c.key === 'mine' ? p.avatar_url : null} />
           )
         ) : null}
-        <Text numberOfLines={2} style={[text.chip, { textAlign: 'center', color: c.open ? colors.fg : colors.sub }]}>
-          {kind === 'title' && !c.open ? '???' : c.label}
+        <Text numberOfLines={2} style={[text.chip, { textAlign: 'center', color: c.open ? colors.fg : colors.sub }, kind === 'title' && !c.open && { paddingHorizontal: 14 }]}>
+          {c.label}
         </Text>
         {c.on ? <Text style={styles.badge}>적용 중</Text> : null}
-        {!c.open ? <Text style={[styles.badge, styles.lock]}>{c.cost ? `${c.cost}P` : '잠김'}</Text> : null}
-      </Pressable>
+        {!c.open ? (
+          c.cost ? (
+            <Text style={[styles.badge, styles.lock]}>{c.cost}P</Text>
+          ) : (
+            <View style={styles.lockDot}>
+              <LockIcon size={12} />
+            </View>
+          )
+        ) : null}
+      </PressScale>
+      </Appear>
     )
   }
 
@@ -106,13 +125,15 @@ export default function StylePickScreen({ navigation, route }) {
       <Screen bottomPad={110}>
         <ScreenHeader title={NAMES[kind]} action="닫기" onAction={() => navigation.goBack()} />
         <Card style={styles.preview}>
-          <AvatarFrame frame={frame} size={96} letter={letter} uri={uri} />
-          <Text style={[text.cardTitle, { fontSize: 20, marginTop: 14 }, nameColor && { color: nameColor }]}>
-            {p.nickname}
-            {title ? <Text style={[text.chip, { color: colors.tape }]}> · {title}</Text> : null}
-          </Text>
+          <Animated.View style={{ alignItems: 'center', transform: [{ scale: pop }] }}>
+            <AvatarFrame frame={frame} size={96} letter={letter} uri={uri} />
+            <Text style={[text.cardTitle, { fontSize: 20, marginTop: 14 }, nameColor && { color: nameColor }]}>
+              {p.nickname}
+              {title ? <Text style={[text.chip, { color: colors.tape }]}> · {title}</Text> : null}
+            </Text>
+          </Animated.View>
           <View style={styles.info}>
-            <Text style={text.section}>{kind === 'title' && !sel.open ? '잠긴 칭호' : sel.label}</Text>
+            <Text style={text.section}>{sel.label}</Text>
             <Text style={text.caption}>{sel.how}</Text>
           </View>
         </Card>
@@ -152,10 +173,13 @@ const styles = StyleSheet.create({
   preview: { alignItems: 'center', paddingTop: 30, paddingBottom: 14 },
   info: { alignSelf: 'stretch', marginTop: 16, gap: 2, padding: 12, borderRadius: radius.md, backgroundColor: colors.panel2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cell: { width: '31.5%', minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, borderRadius: radius.cardSm, backgroundColor: colors.panel, borderWidth: 1.5, borderColor: colors.line },
-  cellWide: { width: '48.5%', minHeight: 64 },
+  slot: { width: '31.5%' },
+  slotWide: { width: '48.5%' },
+  cell: { minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 10, borderRadius: radius.cardSm, backgroundColor: colors.panel, borderWidth: 1.5, borderColor: colors.line },
+  cellWide: { minHeight: 64 },
   cellOn: { borderColor: colors.blue, backgroundColor: colors.blueWeak },
   badge: { position: 'absolute', top: 6, right: 6, fontSize: 10, lineHeight: 14, color: colors.tapeInk, backgroundColor: colors.tape, paddingHorizontal: 6, borderRadius: radius.pill, overflow: 'hidden', fontWeight: '700' },
+  lockDot: { position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10, backgroundColor: colors.disabled, alignItems: 'center', justifyContent: 'center' },
   lock: { color: colors.fg, backgroundColor: colors.disabled },
   bar: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 24, backgroundColor: colors.ink, borderTopWidth: 1, borderTopColor: colors.line },
 })

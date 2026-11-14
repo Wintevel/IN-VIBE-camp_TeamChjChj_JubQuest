@@ -5,11 +5,14 @@ export function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>
 }
 
-export function ListRow({ label, value, onPress, danger }) {
+export function ListRow({ label, value, onPress, danger, icon }) {
   const Row = onPress ? Pressable : View
   return (
     <Row onPress={onPress} style={styles.row} accessibilityRole={onPress ? 'button' : undefined}>
-      <Text style={[{ ...font.bodyMedium, fontSize: 14, lineHeight: 20, color: danger ? colors.red : colors.fg }]}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {icon}
+        <Text style={[{ ...font.bodyMedium, fontSize: 14, lineHeight: 20, color: danger ? colors.red : colors.fg }]}>{label}</Text>
+      </View>
       {value ? <Text style={text.small}>{value}</Text> : null}
     </Row>
   )

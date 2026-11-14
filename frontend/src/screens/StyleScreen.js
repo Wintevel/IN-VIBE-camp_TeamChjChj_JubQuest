@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import AvatarFrame from '../components/AvatarFrame'
 import { Card } from '../components/ListRows'
+import { Appear, PressScale } from '../components/Motion'
 import Screen from '../components/Screen'
 import ScreenHeader from '../components/ScreenHeader'
 import Toast from '../components/Toast'
@@ -33,14 +34,16 @@ export default function StyleScreen({ navigation }) {
           </View>
         </Card>
         <View style={styles.grid}>
-          {tiles.map(([kind, label, now, art]) => (
-            <Pressable key={kind} onPress={() => navigation.navigate('StylePick', { kind })} accessibilityRole="button" accessibilityLabel={`${label} 바꾸기, 지금 ${now}`} style={styles.tile}>
+          {tiles.map(([kind, label, now, art], i) => (
+            <Appear key={kind} index={i} from="bottom" style={styles.slot}>
+            <PressScale onPress={() => navigation.navigate('StylePick', { kind })} accessibilityRole="button" accessibilityLabel={`${label} 바꾸기, 지금 ${now}`} style={styles.tile}>
               <View style={styles.art}>{art}</View>
               <Text style={text.section}>{label}</Text>
               <Text numberOfLines={1} style={text.caption}>
                 {now}
               </Text>
-            </Pressable>
+            </PressScale>
+            </Appear>
           ))}
         </View>
       </Screen>
@@ -52,6 +55,7 @@ export default function StyleScreen({ navigation }) {
 const styles = StyleSheet.create({
   preview: { flexDirection: 'row', alignItems: 'center', gap: 22, paddingLeft: 26, paddingVertical: 22 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  tile: { width: '48%', flexGrow: 1, alignItems: 'center', gap: 4, padding: 14, borderRadius: radius.lg, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line },
+  slot: { width: '48%', flexGrow: 1 },
+  tile: { alignItems: 'center', gap: 4, padding: 14, borderRadius: radius.lg, backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line },
   art: { height: 96, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
 })

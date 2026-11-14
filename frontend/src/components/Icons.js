@@ -132,3 +132,37 @@ export function GearIcon({ size = 16, color = colors.fg }) {
     </Svg>
   )
 }
+
+// 잠금 자물쇠
+export function LockIcon({ size = 12, color = colors.fg }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke={color} strokeWidth={2.6} strokeLinecap="round" />
+      <Rect x="5" y="10.5" width="14" height="10.5" rx="2.5" fill={color} />
+    </Svg>
+  )
+}
+
+// 보관함: 배낭
+export function BackpackIcon({ size = 20, color = colors.tape }) {
+  const p = { ...base, stroke: color }
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path d="M9 6V5a3 3 0 0 1 6 0v1" {...p} />
+      <Path d="M6 21h12a1.5 1.5 0 0 0 1.5-1.5V11A5 5 0 0 0 14.5 6h-5A5 5 0 0 0 4.500 11v8.5A1.5 1.5 0 0 0 6 21z" {...p} />
+      <Path d="M8.500 21v-5.500h7V21M8.500 11h7" {...p} />
+    </Svg>
+  )
+}
+
+// 도움말: 동그라미 안 물음표
+export function HelpIcon({ size = 20, color = colors.blue }) {
+  const p = { ...base, stroke: color }
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="12" cy="12" r="9" {...p} />
+      <Path d="M9.300 9.300a2.800 2.800 0 1 1 4.200 2.400c-.900.600-1.500 1.100-1.500 2.300" {...p} />
+      <Circle cx="12" cy="17.200" r="1.100" fill={color} />
+    </Svg>
+  )
+}
