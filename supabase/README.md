@@ -23,8 +23,14 @@ npx supabase db push     # migrations/ 를 원격에 적용
   - `20261111…`: 처음 스키마·함수 (PR #5)
   - `20261113194340_requests_schema`, `…194636_requests_functions`, `…194800_requests_data`: `docs/backend-requests.md` 1~3번 반영 (2026-11-14)
   - `20261114101545_partner_web`, `…101618_partner_web_description_fix`: 제휴업체 웹 연결 (2-17)
+  - `20261114105452_requests_2`: 익명 제한·가입 동의·상태 버튼·해결 확인 알림·신고·내 정보 개편 (2-12 ~ 2-16, 2-18)
+  - `20261114154247_verify_votes`: 인증 확인 투표·업체 확인, 5-1 ~ 5-5
+  - `…172535_verify_votes_v2`, `…172619_verify_votes_v2_fix`, `…172735_verify_votes_fixed_weights`: 투표 비율 40/30/30·50% 기준, 크루장 확인, 업체 기한 없음
 - 시연용 데이터는 `seed.sql` (원격에는 이미 넣어 둠, `is_demo = true`). 로컬은 `supabase db reset` 시 자동 실행됩니다.
 - 대시보드 설정: Authentication > Anonymous sign-ins 켜 둠.
 - 서버 내부 값(승격 기준 하트 수, 하트당 점수, 하트 하루 상한, XP·레벨 기준, 인증 반경, 하루 상한, 제보 공개 지연 등)은 `public.app_settings` 한 줄에 있고 클라이언트는 읽을 수 없습니다. 값을 바꿀 땐 마이그레이션으로 update 합니다.
 - 운영진 알림: Vault 에 `discord_webhook_url` 를 넣으면 제휴 의뢰 검토 요청·업체 등록 때 디스코드로 알림(pg_net). 제휴 의뢰 승인·반려는 `docs/api.md` "제휴업체 웹" 의 SQL.
+- 운영진 확인 목록: `select * from public.staff_attention;` (숨김 제보, 신고, "치워졌어요" 누적, 해결 이의, 프로필 사진 신고)
+- 익명 쓰기 막기·필수 동의 검사는 `app_settings.block_anonymous_writes`, `require_consent` 로 켜고 끕니다(기본 켜짐).
+- 인증 운영진 결정: `select public.staff_review_claim(인증id, true|false, '사유');` (확인할 사람이 없는 인증)
 - 예약 작업(pg_cron): `jubquest-expire-stale`(5분마다 만료 정리), `jubquest-next-season`(매일 00:05 KST 다음 시즌 생성).
