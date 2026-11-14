@@ -206,19 +206,25 @@ const { data, error } = await supabase.rpc('approve_claim', {
 ### 인증 확인 (2026-11-15 장연우 결정)
 인증 상태: `accepted`(수락) → `submitted`(확인 대기) → `approved`(승인, 이때 포인트·XP·크루 XP 지급) 또는 `rejected`(반려, 의뢰는 다시 열림). 결론이 안 나면 `staff_review`(운영진 검토).
 
-**주민 제보·크루 의뢰: 이웃 투표**
-- 의뢰를 올린 사람 **50%** + 하트 누른 사람(크루 의뢰는 다른 크루원) **50% 를 똑같이 나눔**. 해결한 본인은 투표에서 빠집니다.
-- "치워졌어요" 합계가 **60% 이상**이면 승인. 올린 사람이 "아직이에요"면 바로 반려. 남은 표를 다 받아도 60% 가 안 되면 반려.
-- 올린 사람이 없거나 본인이 해결자면 나머지가 100% 를 나눕니다. 하트가 하나도 없으면 올린 사람 혼자 100%. 투표할 사람이 아무도 없으면 운영진 검토.
-- 투표 대상은 인증을 제출한 순간 정해집니다. 48시간 안에 결론이 안 나면 운영진 검토.
-- 투표는 아래 "해결 확인 알림"(`my_notices`, `answer_notice`) 그대로입니다.
+**주민 제보: 이웃 투표** (2026-11-15 02:23 수정)
+- 의뢰를 올린 사람 **40%** + 하트 누른 사람 **30%**(똑같이 나눔) + 의뢰와 관련 없는 이웃 **30%**(무작위 3명, 똑같이 나눔). 해결한 본인은 빠집니다.
+- 관련 없는 이웃: 익명이 아니고, 필수 동의를 했고, 최근 30일 안에 로그인한 사람 중 무작위입니다.
+- "치워졌어요" 합계가 **50% 이상**이면 승인. 남은 표를 다 받아도 50% 가 안 되면 반려(의뢰 다시 열림). 올린 사람 표 하나로 바로 반려하지는 않습니다.
+- 비율은 고정입니다. 하트가 0개면 최대 70% 라서, 올린 사람이 동의해도 관련 없는 이웃 1명 이상이 더 동의해야 합니다. 얻을 수 있는 최대 비율이 50% 미만이면(예: 올린 사람도 없고 하트도 없음) 운영진 검토.
+- 48시간이 지나면 그때까지의 결과로 결정합니다(50% 이상 승인, 아니면 반려).
+
+**크루 의뢰: 크루장 + 올린 사람**
+- 크루장 50% + 의뢰를 올린 사람 50%. 둘 중 한 명이 "치워졌어요"면 50% 로 승인. 둘이 같은 사람이거나 한 명이 해결자 본인이면 남은 한 명이 100%. 둘 다 해결자 본인이면 운영진 검토. 48시간 규칙은 같습니다.
+
+- 투표 대상은 인증을 제출한 순간 정해지고, 투표는 아래 "해결 확인 알림"(`my_notices`, `answer_notice`) 그대로입니다. `role` 은 `author`(올린 사람), `heart`, `random`(관련 없는 이웃), `owner`(크루장).
+- 숫자(40/30/30, 3명, 50%, 48시간)는 `app_settings` 의 `verify_w_author`, `verify_w_heart`, `verify_w_random`, `verify_random_count`, `verify_threshold`, `verify_timeout`.
 
 **제휴 의뢰: 업체 담당자 확인** (업체가 현장에 1명 이상 파견)
 ```js
-supabase.rpc('partner_claims')  // 업체 웹: [{ id, quest_id, title, user, before, after, single, lat, lng, submitted_at, deadline, status, reject_reason, decided_at }]
+supabase.rpc('partner_claims')  // 업체 웹: [{ id, quest_id, title, user, before, after, single, lat, lng, submitted_at, status, reject_reason, decided_at }]
 await supabase.rpc('partner_review_claim', { p_claim_id, p_approve: true, p_reason: null })  // 'approved'|'rejected'
 ```
-업체 계정이 없는 의뢰(시드 등)는 바로 운영진 검토, 48시간 안에 판단이 없으면 운영진 검토입니다.
+판단 기한은 없고 업체가 반드시 판단합니다. 업체 계정이 없는 의뢰(시드 등)만 운영진 검토로 갑니다.
 
 **하루 3개 상한**은 인증을 제출한 시점에 셉니다(확인 대기 포함). `my_claims` 는 수락 중·확인 대기·운영진 검토·최근 3일 반려를 내려 줍니다:
 `{ claim_id, quest_id, title, kind, status, accepted_at, deadline_at, submitted_at, verify_deadline, ok_percent, voters, answered, reject_reason, points_pending, xp_pending, lat, lng, address }`.
@@ -244,11 +250,11 @@ const { data } = await supabase.rpc('set_mark', { p_report_id, p_mark: 'still' }
 `reports_nearby` 행과 `quests_nearby` 의 주민 제보 행에 `marks`, `my_mark` 가 같이 내려갑니다(승격된 의뢰는 원래 제보 기준). 포인트는 없습니다. `gone` 이 3개(임시) 모이면 운영진 목록(`staff_attention`)에 올라가고 디스코드 알림이 갑니다. 자동 종료는 하지 않습니다(결정 대기).
 
 ### 해결 확인 알림 (2-15)
-주민 제보·크루 의뢰의 인증이 **제출되면** 투표할 사람(올린 사람, 하트 누른 사람 또는 크루원, 해결한 본인 제외)에게 알림이 하나씩 생깁니다. 답이 곧 투표입니다.
+주민 제보·크루 의뢰의 인증이 **제출되면** 투표할 사람(위 "인증 확인" 기준, 해결한 본인 제외)에게 알림이 하나씩 생깁니다. 답이 곧 투표입니다.
 ```js
 supabase.rpc('my_notices')
 // [{ id, claim_id, report_id, quest_id, title, solver, before_path, after_path, single,
-//    role: 'author'|'heart'|'crew', weight(%), claim_status, at, answer: null|'ok'|'not', answered_at }]
+//    role: 'author'|'heart'|'random'|'owner', weight(%), claim_status, at, answer: null|'ok'|'not', answered_at }]
 // 사진 경로는 claim-photos 버킷 공개 경로
 await supabase.rpc('answer_notice', { p_notice_id, p_answer: 'ok' })  // 'ok'(치워졌어요) | 'not'(아직이에요). 한 번만
 // { id, answer, claim_status }   에러: NOTICE_NOT_FOUND(없거나 이미 답함)
