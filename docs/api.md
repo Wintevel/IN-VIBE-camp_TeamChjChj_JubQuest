@@ -100,12 +100,17 @@
 | `coupons` | id, user_id, item_id, name, cost, code, created_at | 본인 것만 읽기 |
 | `cosmetics` | id, kind(`frame`/`name`), name, style, colors, cost(0 이면 레벨로만), level, sort | 전체 읽기 |
 | `user_cosmetics` | user_id, cosmetic_id, created_at | 본인 것만 읽기 |
+| `consent_records` | id, user_id, items(jsonb), version, created_at | 본인 것만 읽기. 쓰기는 `save_consent` |
+| `report_marks` | report_id, user_id, mark(`still`/`gone`/`worse`), updated_at | 본인 것만 읽기. 쓰기는 `set_mark` |
+| `resolve_notices` | id, user_id(받는 사람), report_id, quest_id, title, solver, before_path, after_path, single, answer, answered_at | 본인 것만 읽기 |
+| `report_flags` / `avatar_flags` | 대상, user_id, reason, status, created_at | 본인 것만 읽기 |
+| `achievements` | id, metric, goal | 전체 읽기 |
 
 `point_ledger.reason`: `heart_given`(하트 누름), `quest_approved`, `crew_quest`, `shop_redeem`·`cosmetic_buy`(amount 음수), `seed`. `report_promoted`·`report_heart` 는 예전 기록용입니다.
 
 `is_demo`: `seed.sql` 에서 넣은 시연용 데이터(가짜 크루 점수 포함)는 `true` 입니다. 목록 RPC 가 같이 내려 주므로 화면에서 "예시" 표시를 하거나 숨길 수 있습니다.
 
-Storage 버킷: `report-photos`, `claim-photos` (공개 읽기). 업로드 경로는 반드시 `{내 user id}/파일명`.
+Storage 버킷: `report-photos`, `claim-photos`, `avatars` (공개 읽기). 업로드 경로는 반드시 `{내 user id}/파일명`.
 
 ## 연결
 ```js
@@ -159,6 +164,7 @@ await supabase.from('reports').insert({
   required_members,               // 1 또는 2 이상, 생략하면 1
   photo_url: path, lat, lng,      // 촬영 위치
   address, description,           // 선택
+  spot,                           // 선택, 30자: 위치 설명("○○편의점 앞 전봇대 밑"). 승격되면 의뢰에도 spot 으로 내려감
 })
 // 에러: INVALID_PHOTO (내 폴더에 올라간 파일이 아님)
 ```
@@ -196,12 +202,49 @@ const { data, error } = await supabase.rpc('approve_claim', {
 ```
 해시는 촬영 파일 내용의 SHA-256 입니다. 실패해도 claim 은 `accepted` 로 남아서 다시 찍어 올릴 수 있습니다(만료 제외).
 
+### 로그인·가입 동의 (2-12, 2-13)
+- 로그인 수단은 카카오·구글·이메일(Supabase Auth). 제공자 설정(클라이언트 ID 등)은 백엔드 담당이 대시보드에서 합니다.
+- **익명(둘러보기) 계정**은 의뢰판·지도·랭킹 읽기만 됩니다. 제보·하트·상태 버튼·신고·수락·인증·크루 가입·크루 의뢰·상점·꾸미기 구매는 `LOGIN_REQUIRED`.
+- **필수 동의**(만 14세 이상·이용약관·개인정보·위치정보)가 서버에 없는 계정도 같은 기능이 `CONSENT_REQUIRED`.
+- 두 검사는 `app_settings.block_anonymous_writes`, `require_consent` 로 끌 수 있습니다(서버 설정, 백엔드 담당).
+```js
+await supabase.rpc('save_consent', { p_items: { age: true, terms: true, privacy: true, location: true, push: false }, p_version: '2026-11-14' })
+// p_version 생략 시 서버의 현재 약관 버전. 필수 항목이 빠지면 CONSENT_REQUIRED. 반환은 my_consent 와 같음
+await supabase.rpc('my_consent') // { items, version, at, current_version, ok } 또는 null(기록 없음)
+```
+
+### 상태 버튼 (2-14)
+```js
+const { data } = await supabase.rpc('set_mark', { p_report_id, p_mark: 'still' }) // 'still'|'gone'|'worse'
+// { marks: { still, gone, worse }, my_mark }   같은 걸 다시 보내면 해제(my_mark: null)
+```
+`reports_nearby` 행과 `quests_nearby` 의 주민 제보 행에 `marks`, `my_mark` 가 같이 내려갑니다(승격된 의뢰는 원래 제보 기준). 포인트는 없습니다. `gone` 이 3개(임시) 모이면 운영진 목록(`staff_attention`)에 올라가고 디스코드 알림이 갑니다. 자동 종료는 하지 않습니다(결정 대기).
+
+### 해결 확인 알림 (2-15)
+주민 제보 의뢰가 인증 완료되면 제보한 사람과 하트를 누른 사람(해결한 본인 제외)에게 알림이 하나씩 생깁니다.
+```js
+supabase.rpc('my_notices')
+// [{ id, report_id, quest_id, title, solver, before_path, after_path, single, at, answer: null|'ok'|'not', answered_at }]
+// 사진 경로는 claim-photos 버킷 공개 경로
+await supabase.rpc('answer_notice', { p_notice_id, p_answer: 'ok' })  // 'ok'(치워졌어요) | 'not'(아직이에요). 한 번만
+// { id, answer, not_count }   에러: NOTICE_NOT_FOUND(없거나 이미 답함)
+```
+`not` 이 2건(임시) 모이면 의뢰에 이의 표시(`quests.disputed_at`)를 남기고 운영진에게 알립니다. 포인트 회수는 결정 대기입니다. 푸시 알림은 없습니다(앱 안 목록만).
+
+### 제보 신고·프로필 사진 신고 (2-16, 2-18)
+```js
+await supabase.rpc('flag_report', { p_report_id, p_reason: 'fake' }) // photo|fake|privacy|danger|etc. 같은 제보는 한 번만(두 번째는 조용히 무시)
+await supabase.rpc('flag_avatar', { p_user_id, p_reason: 'photo' })  // photo|privacy|etc
+```
+신고한 사람의 목록(`reports_nearby`, `quests_nearby`)에서는 그 제보가 바로 빠집니다. 신고가 3건(임시) 모이면 제보는 모두에게서 숨겨지고(`hidden_at`), 프로필 사진은 기본으로 돌아갑니다. 새 신고마다 운영진 디스코드 알림이 갑니다.
+
 ### 내 정보 / 설정
 ```js
 supabase.rpc('my_profile')
 // { id, nickname, initial, avatar_url, home_area, frame: { id, style, colors }, name_color, joined_days,
 //   points, total_earned, xp, level, xp_in_level, xp_for_next_level, crew,
 //   hearts_today, hearts_limit, completes_today, completes_limit, daily_remaining,
+//   title_key, weekly: [8개 숫자, 오래된 주부터], stats: { completed, hearts, reports, rewards, places: {drain: 2, ...}, issues: {litter: 1, ...} },
 //   completed_count, streak_weeks, active_this_week,
 //   cleaned: [{ id, at, title, place_label, issue_type }],   // 내가 치운 곳 최근 10건
 //   rewards: [{ label, from, at }],                           // 받은 제휴 보상
@@ -211,6 +254,15 @@ supabase.rpc('my_cleaned', { p_limit: 20, p_before: null }) // 치운 곳 더 �
 await supabase.from('profiles').update({ nickname, home_area }).eq('id', me)
 await supabase.auth.signOut()
 ```
+
+```js
+// 2-18 프로필 사진: avatars 버킷 본인 폴더에 올린 뒤 경로를 저장 (다른 경로면 INVALID_PHOTO)
+await supabase.storage.from('avatars').upload(`${user.id}/avatar.jpg`, file, { upsert: true })
+await supabase.from('profiles').update({ avatar_url: `${user.id}/avatar.jpg` }).eq('id', me)  // null 이면 기본
+// 2-18 칭호 고르기: 'lv:3'(레벨 3 이상) 또는 'ach:first'(도전과제 달성). null 이면 지금 레벨 칭호
+await supabase.rpc('set_title', { p_key: 'ach:first' })   // 에러: TITLE_LOCKED, INVALID_INPUT
+```
+`stats.places` 의 키는 웹·앱 장소 키(`drain`/`bus_stop`/`park`/`street`/`etc`), `stats.issues` 는 문제 유형 키입니다. 도전과제 조건은 서버 `achievements` 테이블에도 같은 숫자로 있습니다(`frontend/src/lib/achievements.js` 를 바꾸면 같이 바꿔야 함).
 
 ### 상점
 ```js
@@ -304,11 +356,16 @@ select public.staff_review_quest(12, false, '장소가 불분명해요');   -- �
 - 인증 시 사진 해시(SHA-256)를 같이 보내 주세요. 없으면 `MISSING_PROOF` 입니다. `NO_CHANGE` 검사를 쓰려면 32×32 미리보기도 보내 주세요(선택).
 - 새 에러 코드 `INVALID_PHOTO`, `ITEM_NOT_FOUND`, `INVALID_NAME`, `ALREADY_ACCEPTED`, `QUEST_CLOSED`, `MOCK_LOCATION`, `MISSING_PROOF`, `CLAIM_EXPIRED` 문구가 `errors.js` 에 필요합니다.
 
+## 프론트에 요청 (2-12 ~ 2-18)
+- 서버에 연결하면 익명 계정은 쓰기 기능이 `LOGIN_REQUIRED` 입니다. 카카오·구글·이메일 로그인 화면과, 가입 동의 화면에서 `save_consent` 호출을 붙여 주세요(지금 동의는 기기에만 저장됨).
+- 새 에러 코드 문구: `LOGIN_REQUIRED`, `CONSENT_REQUIRED`, `TITLE_LOCKED`, `NOTICE_NOT_FOUND`.
+- 운영진용 목록은 대시보드 SQL 에디터에서 `select * from public.staff_attention;` (자동 숨김된 제보, 신고, "치워졌어요" 누적, 해결 이의, 프로필 사진 신고).
+
 ## 프론트에 요청 (제휴업체 웹)
 - `web/src/api.js` 의 함수 안쪽을 위 RPC 로 바꿔 주세요. 웹에 Supabase 클라이언트와 로그인(지금은 익명도 됨, 업체 계정은 이메일 로그인 권장)이 필요합니다.
 
 ## 정해야 할 것
-- (확정됨) 로그인은 카카오·구글·이메일, 익명 계정은 둘러보기만. 서버 반영은 `docs/backend-requests.md` 2-12
+- (확정·서버 반영됨) 로그인은 카카오·구글·이메일, 익명 계정은 둘러보기만
 - 1인 1크루 확정 여부 ? (지금 구현은 1인 1크루)
 - 같은 위치 중복 제보 처리 ?
 - 숫자 값(하트 1개당 해결 보상, 하트 누른 사람 포인트, XP·레벨 기준, 크루 의뢰 포인트, 상점·꾸미기 가격) ?
